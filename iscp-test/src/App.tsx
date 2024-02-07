@@ -167,6 +167,12 @@ const App: React.FC = () => {
               rttMillis.push(rttMilli);
               outputText += `${chunk.sequenceNumber}: rtt=${rttMilli.toFixed(2)} ms<br/>`;
               setResult(outputText);
+              if (chunk.sequenceNumber==Number(formData.limit)) {
+                const { min, max, avg, stddev } = calculateStats(rttMillis);
+                outputText += '---- statistics ----<br/>'
+                outputText += `min/avg/max/sd = ${min.toFixed(2)}/${avg.toFixed(2)}/${max.toFixed(2)}/${stddev.toFixed(2)} ms<br/>`
+                setResult(outputText);
+              }
             });
 
             for (let i = 0; i < Number(formData.limit); i++) {
@@ -179,12 +185,6 @@ const App: React.FC = () => {
                 }),
               ]);
             }
-
-            await sleepMs(Number(formData.interval)+1000);
-            const { min, max, avg, stddev } = calculateStats(rttMillis);
-            outputText += '---- ping statistics ----<br/>'
-            outputText += `min/avg/max/sd = ${min.toFixed(2)}/${avg.toFixed(2)}/${max.toFixed(2)}/${stddev.toFixed(2)} ms<br/>`
-            setResult(outputText);
 
         } catch (error) {
             console.log(error);
