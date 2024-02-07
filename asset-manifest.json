@@ -1,16 +1,15 @@
 {
   "files": {
-    "main.css": "/iscp-test/static/css/main.f855e6bc.css",
-    "main.js": "/iscp-test/static/js/main.a7900d7c.js",
+    "main.css": "/iscp-test/static/css/main.e6c13ad2.css",
+    "main.js": "/iscp-test/static/js/main.e5a35936.js",
     "static/js/592.3dfa9419.chunk.js": "/iscp-test/static/js/592.3dfa9419.chunk.js",
-    "static/media/logo.svg": "/iscp-test/static/media/logo.6ce24c58023cc2f8fd88fe9d219db6c6.svg",
     "index.html": "/iscp-test/index.html",
-    "main.f855e6bc.css.map": "/iscp-test/static/css/main.f855e6bc.css.map",
-    "main.a7900d7c.js.map": "/iscp-test/static/js/main.a7900d7c.js.map",
+    "main.e6c13ad2.css.map": "/iscp-test/static/css/main.e6c13ad2.css.map",
+    "main.e5a35936.js.map": "/iscp-test/static/js/main.e5a35936.js.map",
     "592.3dfa9419.chunk.js.map": "/iscp-test/static/js/592.3dfa9419.chunk.js.map"
   },
   "entrypoints": [
-    "static/css/main.f855e6bc.css",
-    "static/js/main.a7900d7c.js"
+    "static/css/main.e6c13ad2.css",
+    "static/js/main.e5a35936.js"
   ]
 }
