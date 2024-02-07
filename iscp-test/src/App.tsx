@@ -12,6 +12,7 @@ import * as iscp from '@aptpod/iscp-ts'
 const THIS_PAGE = 'https://ryskiwt.github.io/iscp-test/'
 const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const getNowTimeNano = () => BigInt(Date.now()) * BigInt(1000_000)
+const getNowTimeMilli = () => Date.now();
 const getRandomBytes = (length: number) => {
   const randomBytes = new Uint8Array(length);
   window.crypto.getRandomValues(randomBytes);
@@ -39,8 +40,8 @@ interface FormData {
   dataName: string;
   dataType: string;
   payloadSize: string;
+  frequency: string;
   limit: string;
-  interval: string;
   [key: string]: string;
 }
 
@@ -51,19 +52,21 @@ const App: React.FC = () => {
       nodeId: '',
       dataName: '',
       dataType: '',
+      flushInterval: '',
       payloadSize: '',
+      frequency: '',
       limit: '',
-      interval: '',
     });
     const formLabels: FormData = {
-      url: 'intdash Server URL (ex. https://example.intdash.jp)',
-      token: 'API Token',
-      nodeId: 'Node ID',
-      dataName: 'Data Name',
-      dataType: 'Data Type',
-      payloadSize: 'Payload Size [B]',
-      limit: 'Limit',
-      interval: 'Interval [ms]',
+      url: 'intdashサーバーURL (ex. https://example.intdash.jp)',
+      token: 'APIトークン',
+      nodeId: 'ノードID',
+      dataName: 'データ名',
+      dataType: 'データタイプ',
+      flushInterval: "フラッシュ間隔 [ms]",
+      payloadSize: 'ペイロードサイズ [KiB]',
+      frequency: '送信頻度 [Hz]',
+      limit: '送信回数',
     };
     const [thisPage, setThisPage] = useState(THIS_PAGE);
     const [result, setResult] = useState('');
@@ -76,13 +79,14 @@ const App: React.FC = () => {
       const nodeId = searchParams.get('nodeId') || localStorage.getItem('nodeId') || '';
       const dataName = searchParams.get('dataName') || localStorage.getItem('dataName') || 'data_name';
       const dataType = searchParams.get('dataType') || localStorage.getItem('dataType') || 'bytes';
-      const payloadSize = searchParams.get('payloadSize') || localStorage.getItem('payloadSize') || '64';
-      const limit = searchParams.get('limit') || localStorage.getItem('limit') || '10';
-      const interval = searchParams.get('interval') || localStorage.getItem('interval') || '1000';
-      setFormData({ url, token, nodeId, dataName, dataType, payloadSize, limit, interval });
+      const flushInterval = searchParams.get('flushInterval') || localStorage.getItem('flushInterval') || '10';
+      const payloadSize = searchParams.get('payloadSize') || localStorage.getItem('payloadSize') || '10';
+      const frequency = searchParams.get('frequency') || localStorage.getItem('frequency') || '1000';
+      const limit = searchParams.get('limit') || localStorage.getItem('limit') || '1000';
+      setFormData({ url, token, nodeId, dataName, dataType, flushInterval, payloadSize, frequency, limit});
       window.history.replaceState(null, '', window.location.pathname);
 
-      const params = new URLSearchParams({url, token, nodeId, dataName, dataType, payloadSize, limit, interval});
+      const params = new URLSearchParams({url, token, nodeId, dataName, dataType, flushInterval, payloadSize, frequency, limit});
       setThisPage(`${THIS_PAGE}?${params.toString()}`);
     }, []);
 
@@ -132,59 +136,91 @@ const App: React.FC = () => {
             });
 
             const sessionId = uuidv4();
-            const baseTime = getNowTimeNano();
+            const baseTimeNano = getNowTimeNano();
+            const baseTimeMilli = Number(baseTimeNano) / 1000000;
             // FIXME: なぜかFailする
             // await conn.sendBaseTime(
             //   new iscp.BaseTime({
             //     name: 'EdgeRTC',
             //     elapsedTime: 0n,
-            //     baseTime: baseTime,
+            //     baseTime: baseTimeNano,
             //     priority: 0,
             //     sessionId: sessionId,
             //   }),
             // );
 
+            let flushPolicy = null;
+            if (formData.flushInterval=='0') {
+              flushPolicy = iscp.FlushPolicy.immediately();
+            } else {
+              flushPolicy = iscp.FlushPolicy.intervalOnly(Number(formData.flushInterval)/1000.0)
+            }
+
             const upstream = await conn.openUpstream({
               sessionId: sessionId,
               qos: iscp.QOS.UNRELIABLE,
-              flushPolicy: iscp.FlushPolicy.immediately(),
+              flushPolicy: flushPolicy,
               persist: false,
+              closeSession: true,
             });
             const downstream = await conn.openDownstream({
               filters: [iscp.DownstreamFilter.allFor(formData.nodeId)],
             });
 
-            let rttMillis: number[] = [];
+            const limit = Number(formData.limit);
+            let txTimeMillis = new Array(limit);
+            let rxTimeMillis = new Array(limit);
+            let rttMillis = new Array(limit);
             let outputText = '';
+            let i = 0;
             downstream.addEventListener(iscp.Downstream.EVENT.CHUNK, (chunk) => {
               if (chunk.upstreamInfo.sessionId != sessionId) {
                 return;
               }
-              const rxTimeNano = getNowTimeNano();
-              const txTimeNano = chunk.dataPointGroups[0].dataPoints[0].elapsedTime + baseTime;
-              const rttNano = Number(rxTimeNano - txTimeNano);
-              const rttMilli = Number(rttNano) / 1000000.0;
-              rttMillis.push(rttMilli);
-              outputText += `${chunk.sequenceNumber}: rtt=${rttMilli.toFixed(2)} ms<br/>`;
-              setResult(outputText);
-              if (chunk.sequenceNumber==Number(formData.limit)) {
+
+              chunk.dataPointGroups.forEach((grp) => {
+                grp.dataPoints.forEach((dp) => {
+                  const rxTimeMilli = getNowTimeMilli();
+                  const txTimeMilli = Number(dp.elapsedTime)/1000000 + baseTimeMilli ;
+                  const rttMilli = rxTimeMilli - txTimeMilli;
+    
+                  rxTimeMillis[i] = rxTimeMilli;
+                  txTimeMillis[i] = txTimeMilli;
+                  rttMillis[i] = rttMilli;
+                  i++;
+
+                  outputText += `${i}: chunk=${chunk.sequenceNumber}, rtt=${rttMilli.toFixed(2)} ms<br/>`;
+                  setResult(outputText);
+                });
+              });
+
+              if (i==limit) {
                 const { min, max, avg, stddev } = calculateStats(rttMillis);
+                const duration = rxTimeMillis[rxTimeMillis.length-1] - txTimeMillis[0];
+                const dataRateMBps = Number(formData.payloadSize) * limit / duration /1024 *1000;
                 outputText += '---- statistics ----<br/>'
                 outputText += `min/avg/max/sd = ${min.toFixed(2)}/${avg.toFixed(2)}/${max.toFixed(2)}/${stddev.toFixed(2)} ms<br/>`
+                outputText += `throughput = ${dataRateMBps.toFixed(2)} MB/s (${(dataRateMBps*8).toFixed(2)} Mbps)<br/>`
                 setResult(outputText);
+                downstream.close();
               }
             });
 
-            for (let i = 0; i < Number(formData.limit); i++) {
-              await sleepMs(Number(formData.interval))
-              const payload = getRandomBytes(Number(formData.payloadSize));
+            const interval = Number(1000) / Number(formData.frequency)
+            for (let i = 0; i< limit; i++) {
               await upstream.writeDataPoints(new iscp.DataId({name: formData.dataName, type: formData.dataType}), [
                 new iscp.DataPoint({
-                  elapsedTime: getNowTimeNano() - baseTime,
-                  payload: payload,
+                  elapsedTime: getNowTimeNano() - baseTimeNano,
+                  payload: getRandomBytes(Number(formData.payloadSize)*1024),
                 }),
               ]);
+              await sleepMs(interval)
             }
+
+            await upstream.flush();
+            await upstream.close();
+            await downstream.waitClosed();
+            await conn.close();
 
         } catch (error) {
             console.log(error);
@@ -205,7 +241,7 @@ const App: React.FC = () => {
           width: '100%',
         }}>
           <Typography variant="h4" component="h1" gutterBottom sx={{ width: '100%', textAlign: 'center', fontWeight: 'bold' }}>
-            iSCP Ping/Pong
+            intdash Protocol Testing Tool
           </Typography>
           <Box onClick={handleQRCodeClick} sx={{ cursor: 'pointer' }}>
             <QRCode value={thisPage} size={128} />
