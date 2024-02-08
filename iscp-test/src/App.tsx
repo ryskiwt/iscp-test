@@ -138,16 +138,15 @@ const App: React.FC = () => {
             const sessionId = uuidv4();
             const baseTimeNano = getNowTimeNano();
             const baseTimeMilli = Number(baseTimeNano) / 1000000;
-            // FIXME: なぜかFailする
-            // await conn.sendBaseTime(
-            //   new iscp.BaseTime({
-            //     name: 'EdgeRTC',
-            //     elapsedTime: 0n,
-            //     baseTime: baseTimeNano,
-            //     priority: 0,
-            //     sessionId: sessionId,
-            //   }),
-            // );
+            await conn.sendBaseTime(
+              new iscp.BaseTime({
+                name: 'edge_rtc',
+                elapsedTime: 0n,
+                baseTime: baseTimeNano,
+                priority: 100,
+                sessionId: sessionId,
+              }),
+            );
 
             let flushPolicy = null;
             if (formData.flushInterval=='0') {
