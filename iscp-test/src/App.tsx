@@ -206,15 +206,22 @@ const App: React.FC = () => {
               }
             });
 
+            let kurikoshiMilli = 0;
             const interval = Number(1000) / Number(formData.frequency)
             for (let i = 0; i< limit; i++) {
+              const now = getNowTimeNano();
               await upstream.writeDataPoints(new iscp.DataId({name: formData.dataName, type: formData.dataType}), [
                 new iscp.DataPoint({
-                  elapsedTime: getNowTimeNano() - baseTimeNano,
+                  elapsedTime: now - baseTimeNano,
                   payload: getRandomBytes(Number(formData.payloadSize)*1024),
                 }),
               ]);
-              await sleepMs(interval)
+              const sleepTimeMilli = interval - Number(getNowTimeNano()-now)/1000000 + kurikoshiMilli;
+              if (sleepTimeMilli >= 1) {
+                await sleepMs(sleepTimeMilli);
+              } else {
+                kurikoshiMilli = sleepTimeMilli
+              }
             }
 
             await upstream.flush();
